@@ -1,12 +1,11 @@
 [package]
-name = "hello-world"
-version = "0.0.0"
+name = "ajopay-governance"
+version = "0.1.0"
 edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["lib", "cdylib"]
-doctest = false
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
