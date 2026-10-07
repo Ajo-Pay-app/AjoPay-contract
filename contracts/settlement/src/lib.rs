@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, token, Address, Env, Symbol, Vec,
 };
 
 /// ---------------------------------------------------------------------
@@ -48,7 +48,10 @@ pub enum Error {
     InvalidAmount = 6,
 }
 
-const PLATFORM_FEE_BPS: i128 = 150; // 1.5% default, overridable via governance later
+/// Used only if `governance_addr` was never set (e.g. in older test setups).
+/// In normal operation the fee is read live from the governance contract —
+/// see `platform_fee_bps` below.
+const FALLBACK_FEE_BPS: i128 = 150;
 
 /// ---------------------------------------------------------------------
 /// Contract
@@ -72,6 +75,62 @@ impl AjoPaySettlement {
             .instance()
             .set(&DataKey::GovernanceAddr, &governance_addr);
         env.storage().instance().set(&DataKey::PaymentCounter, &0u64);
+        Ok(())
+    }
+
+    /// Admin-only: repoint this settlement contract at a different (or
+    /// newly redeployed) governance contract.
+    pub fn set_governance_addr(env: Env, admin: Address, governance_addr: Address) -> Result<(), Error> {
+        Self::require_admin(&env, &admin)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::GovernanceAddr, &governance_addr);
+        Ok(())
+    }
+
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
+    }
+
+    pub fn get_governance_addr(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::GovernanceAddr)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Reads the live platform fee (basis points) from the governance
+    /// contract. Falls back to `FALLBACK_FEE_BPS` only if no governance
+    /// address was ever set — this should not happen for contracts
+    /// initialized after Week 1, Day 6.
+    fn platform_fee_bps(env: &Env) -> i128 {
+        let governance_addr: Option<Address> = env.storage().instance().get(&DataKey::GovernanceAddr);
+        match governance_addr {
+            Some(addr) => {
+                let fee_bps: u32 = env.invoke_contract(
+                    &addr,
+                    &Symbol::new(env, "get_fee_bps"),
+                    Vec::new(env),
+                );
+                fee_bps as i128
+            }
+            None => FALLBACK_FEE_BPS,
+        }
+    }
+
+    fn require_admin(env: &Env, caller: &Address) -> Result<(), Error> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        if &admin != caller {
+            return Err(Error::Unauthorized);
+        }
         Ok(())
     }
 
@@ -120,12 +179,13 @@ impl AjoPaySettlement {
 
     /// Payer settles a pending payment. Transfers `amount` of `asset` from `payer`
     /// to this contract, then splits it out: merchant gets (amount - platform fee),
-    /// platform (this contract's admin) gets the fee.
+    /// platform (this contract's admin) gets the fee. The fee rate itself is
+    /// read live from the governance contract each time, so an admin can
+    /// change pricing without redeploying settlement.
     ///
-    /// NOTE: for a production build you'd route the platform-fee share to a
-    /// configurable treasury address (read from governance) rather than the admin
-    /// directly — left as a Week 2 governance-integration task, see AjoPay-Contract
-    /// README "Design Notes".
+    /// NOTE: the fee still lands on this contract's `admin` address rather
+    /// than a separately configurable treasury — splitting those two roles
+    /// apart is a reasonable next governance feature if you want it.
     pub fn pay(env: Env, payer: Address, payment_id: u64) -> Result<(), Error> {
         payer.require_auth();
 
@@ -147,7 +207,8 @@ impl AjoPaySettlement {
 
         let token_client = token::Client::new(&env, &payment.asset);
 
-        let fee = (payment.amount * PLATFORM_FEE_BPS) / 10_000;
+        let fee_bps = Self::platform_fee_bps(&env);
+        let fee = (payment.amount * fee_bps) / 10_000;
         let merchant_share = payment.amount - fee;
 
         // Pull full amount from payer into this contract, then disburse.

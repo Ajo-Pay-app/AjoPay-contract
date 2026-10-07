@@ -59,9 +59,9 @@ bash scripts/deploy_testnet.sh
 
 | Contract | Address |
 |----------|---------|
-| Settlement | `TBD — fill in after running deploy_testnet.sh` |
-| Governance | `TBD — fill in after running deploy_testnet.sh` |
-| Admin | `TBD` |
+| Settlement | `CALRYY6HQDHT2E3KRI4S5ORW36WEI6GZ4IAFJRJKUN5IZAYXCDKAD6G3` |
+| Governance | `CDSVLXSWLR4K7K6RLA6PYZECDSLYBXM6XFG5NRNKMAHSD4XLTD7EMB4H` |
+| Admin | ` GAM7XIXTYY63CIZSG4IEIKUSJDWRXFJR3NTBPTOBZIAH66T5TSU2SV5X` |
 
 Network: Test SDF Network
 
