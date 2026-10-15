@@ -5,10 +5,6 @@ members = [
     "contracts/governance",
 ]
 
-[workspace.dependencies]
-soroban-sdk = "21.7.7"
-ed25519-dalek = "=2.1.1"
-
 [profile.release]
 opt-level = "z"
 overflow-checks = true
@@ -18,7 +14,3 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
-
-[profile.release-with-logs]
-inherits = "release"
-debug-assertions = true
